@@ -1,65 +1,78 @@
 package com.polec.mscarrito.controller;
 
-import com.polec.mscarrito.client.RolClient;
-import com.polec.mscarrito.client.RolDTO;
-import com.polec.mscarrito.dto.UsuarioResponse;
-import com.polec.mscarrito.entity.carrito;
-import com.polec.mscarrito.repository.carritoRepository;
+import com.polec.mscarrito.client.ItemClient;
+import com.polec.mscarrito.client.ItemDTO;
+import com.polec.mscarrito.dto.AgregarItemRequest;
+import com.polec.mscarrito.entity.Carrito;
+import com.polec.mscarrito.entity.CarritoItem;
+import com.polec.mscarrito.repository.CarritoRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/carritos")
 public class CarritoController {
-    //inyectar el repository
     private final CarritoRepository repository;
-    //inyectar el objeto rest
-    private final UsuarioClient usuarioClient;
+    private final ItemClient itemClient;
 
-
-    public CarritoController(carritoRepository repository, RolClient rolClient){
+    public CarritoController(CarritoRepository repository, ItemClient itemClient) {
         this.repository = repository;
-        this.rolClient = rolClient;
+        this.itemClient = itemClient;
     }
 
-    @PostMapping
-    public ResponseEntity<?> crear(@RequestBody carrito carrito){
-        if(!rolClient.existe(carrito.getRolId())){
-            return ResponseEntity.badRequest()
-                    .body("El rol " + carrito.getRolId() + " no existe en ms-role");
+    @PostMapping("/items")
+    public ResponseEntity<Carrito> agregarItem(@RequestBody AgregarItemRequest request) {
+
+        ItemDTO itemOriginal = itemClient.obtenerItemPorId(request.itemId());
+
+        Optional<Carrito> carritoExistente = repository.findByUsuarioId(request.usuarioId());
+        Carrito carrito;
+
+        if (carritoExistente.isPresent()) {
+            carrito = carritoExistente.get();
+        } else {
+            carrito = new Carrito();
+            carrito.setUsuarioId(request.usuarioId());
         }
-        carrito.setPassword(encoder.encode(carrito.getPassword()));
-        carrito guardado = repository.save(carrito);
-        RolDTO rol = rolClient.buscarPorId(guardado.getRolId());
-        return ResponseEntity.status(HttpStatus.CREATED).body(UsuarioResponse.de(guardado, rol));
-    }
 
+        CarritoItem nuevoItem = new CarritoItem();
+        nuevoItem.setItemId(itemOriginal.id());
+
+        nuevoItem.setItemPrecio(itemOriginal.precio());
+
+        nuevoItem.setCarrito(carrito);
+        carrito.getItems().add(nuevoItem);
+
+        Carrito carritoGuardado = repository.save(carrito);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(carritoGuardado);
+    }
     @GetMapping
-    public List<carrito> listar(){
+    public List<Carrito> listarCarritos(){
         return repository.findAll();
     }
 
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> eliminar(@PathVariable Long id){
-        if(!repository.existsById(id)){
+    @DeleteMapping("/{usuarioId}")
+    public ResponseEntity<Void> eliminar(@PathVariable Long usuarioId){
+        if(!repository.existsByUsuarioId(usuarioId)){
             return ResponseEntity.notFound().build();
         }
-        repository.deleteById(id);
+        repository.deleteByUsuarioId(usuarioId);
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<UsuarioResponse> buscarPorId(@PathVariable Long id){
-        return repository.findById(id)
-                .map(carrito -> ResponseEntity.ok(UsuarioResponse.de(carrito, rolClient.buscarPorId(carrito.getRolId()))))
+    @GetMapping("/{usuarioId}")
+    public ResponseEntity<Carrito> verCarrito(@PathVariable Long usuarioId) {
+        return repository.findByUsuarioId(usuarioId)
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
-
 
 
 

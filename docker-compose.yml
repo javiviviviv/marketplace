@@ -1,19 +1,79 @@
-services:
-  mysql:
-    image: mysql:8.4
-    container_name: mysql-polec
-    restart: unless-stopped
 
+
+services:
+  mysql-rol:
+    image: mysql:8.4
+    container_name: mysql-rol
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: polec
-      MYSQL_USER: polec
-      MYSQL_PASSWORD: polec
-
+      MYSQL_DATABASE: rol
+      MYSQL_USER: rol_user
+      MYSQL_PASSWORD: rol_pass
     ports:
       - "3307:3306"
-
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_rol_data:/var/lib/mysql
+
+  mysql-usuario:
+    image: mysql:8.4
+    container_name: mysql-usuario
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: usuario
+      MYSQL_USER: usuario_user
+      MYSQL_PASSWORD: usuario_pass
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_usuario_data:/var/lib/mysql
+
+  mysql-item:
+    image: mysql:8.4
+    container_name: mysql-item
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: item
+      MYSQL_USER: item_user
+      MYSQL_PASSWORD: item_pass
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql_item_data:/var/lib/mysql
+
+  mysql-categoria:
+    image: mysql:8.4
+    container_name: mysql-categoria
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: categoria
+      MYSQL_USER: categoria_user
+      MYSQL_PASSWORD: categoria_pass
+    ports:
+      - "3310:3306"
+    volumes:
+      - mysql_categoria_data:/var/lib/mysql
+
+  mysql-carrito:
+    image: mysql:8.4
+    container_name: mysql-carrito
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: carrito
+      MYSQL_USER: carrito_user
+      MYSQL_PASSWORD: carrito_pass
+    ports:
+      - "3311:3306"
+    volumes:
+      - mysql_carrito_data:/var/lib/mysql
+
 volumes:
-  mysql_data:
+  mysql_rol_data:
+  mysql_usuario_data:
+  mysql_item_data:
+  mysql_categoria_data:
+  mysql_carrito_data:

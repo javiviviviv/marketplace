@@ -1,7 +1,7 @@
 package com.polec.msrol.controller;
 
 import com.polec.msrol.entity.Rol;
-import com.polec.msrole.repository.RolRepository;
+import com.polec.msrol.repository.RolRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 

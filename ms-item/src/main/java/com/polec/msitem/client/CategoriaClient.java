@@ -1,33 +1,17 @@
 package com.polec.msitem.client;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
-@Component
-public class CategoriaClient {
-    private final RestClient rest;
+@FeignClient(name = "ms-categoria", url = "http://localhost:8085")
+public interface CategoriaClient {
 
-    public CategoriaClient(@Value("http://localhost:8083") String urlMsCategoria){
-        this.rest = RestClient.create(urlMsCategoria);
-    }
+    @GetMapping("/categorias/{id}")
+    CategoriaDTO buscarPorId(@PathVariable("id") Long id);
 
-    public CategoriaDTO buscarPorId(Long id){
-        if(id == null){
-            return null;
-        }
-        try{
-            return rest.get()
-                    .uri("/categorias/{id}", id)
-                    .retrieve()
-                    .body(CategoriaDTO.class);
-        } catch (Exception e) {
-            System.out.println("No se pudo obtener la categoria " + id + " : " + e.getMessage());
-            return null;
-        }
-    }
 
-    public boolean existe(Long id){
+    default boolean existe(Long id){
         return buscarPorId(id) != null;
-    }
+}
 }

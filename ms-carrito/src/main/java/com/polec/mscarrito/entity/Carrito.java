@@ -14,11 +14,11 @@ import java.util.List;
 @Getter
 @Setter
     public class Carrito {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    private List<CarritoItem> items = new ArrayList<>();
-    private Long usuarioId;
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+
+    @Column(nullable = false) private Long usuarioId;
+
     private Long total = 0L;
 
+    @OneToMany(mappedBy = "carrito", cascade = CascadeType.ALL, orphanRemoval = true) private List<CarritoItem> items = new ArrayList<>();
 }

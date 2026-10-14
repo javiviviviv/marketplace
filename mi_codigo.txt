@@ -5,47 +5,32 @@ wrapperVersion=3.3.4
 distributionType=only-script
 distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.16/apache-maven-3.9.16-bin.zip
 
-==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\client\RolClient.java ====
+==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\client\ItemClient.java ====
 
 package com.polec.mscarrito.client;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
+import com.polec.mscarrito.client.ItemDTO;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
-@Component
-public class RolClient {
-    private final RestClient rest;
+@FeignClient(name = "ms-item", url = "http://localhost:8083")
+public interface ItemClient {
 
-    public RolClient(@Value("http://localhost:8082") String urlDeMsRole){
-        this.rest = RestClient.create(urlDeMsRole);
-    }
-
-    public RolDTO buscarPorId(Long id){
-        if(id == null){
-            return null;
-        }
-        try{
-            return rest.get()
-                    .uri("/roles/{id}", id)
-                    .retrieve()
-                    .body(RolDTO.class);
-        } catch (Exception e) {
-            System.out.println("No se pudo obtener el rol " + id + " : " + e.getMessage());
-            return null;
-        }
-    }
-
-    public boolean existe(Long id){
-        return buscarPorId(id) != null;
-    }
+    @GetMapping("/items/{id}")
+    ItemDTO obtenerItemPorId(@PathVariable("id") Long id);
 }
 
-==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\client\RolDTO.java ====
+==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\client\ItemDTO.java ====
 
 package com.polec.mscarrito.client;
 
-public record RolDTO(Long id, String nombre, String descripcion) {
+public record ItemDTO(
+        Long id,
+        String nombre,
+        Long precio,
+        Long vendedorId
+) {
 }
 
 ==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\config\SecurityConfig.java ====
@@ -77,95 +62,93 @@ public class SecurityConfig {
 
 package com.polec.mscarrito.controller;
 
-import com.polec.mscarrito.client.RolClient;
-import com.polec.mscarrito.client.RolDTO;
-import com.polec.mscarrito.dto.UsuarioResponse;
-import com.polec.mscarrito.entity.carrito;
-import com.polec.mscarrito.repository.carritoRepository;
+import com.polec.mscarrito.client.ItemClient;
+import com.polec.mscarrito.client.ItemDTO;
+import com.polec.mscarrito.dto.AgregarItemRequest;
+import com.polec.mscarrito.entity.Carrito;
+import com.polec.mscarrito.entity.CarritoItem;
+import com.polec.mscarrito.repository.CarritoRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/carritos")
 public class CarritoController {
-    //inyectar el repository
     private final CarritoRepository repository;
-    //inyectar el objeto rest
-    private final UsuarioClient usuarioClient;
-    //crear un objeto para hashear mis password
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    private final ItemClient itemClient;
 
-    public CarritoController(carritoRepository repository, RolClient rolClient){
+    public CarritoController(CarritoRepository repository, ItemClient itemClient) {
         this.repository = repository;
-        this.rolClient = rolClient;
+        this.itemClient = itemClient;
     }
 
-    @PostMapping
-    public ResponseEntity<?> crear(@RequestBody carrito carrito){
-        if(!rolClient.existe(carrito.getRolId())){
-            return ResponseEntity.badRequest()
-                    .body("El rol " + carrito.getRolId() + " no existe en ms-role");
+    @PostMapping("/items")
+    public ResponseEntity<Carrito> agregarItem(@RequestBody AgregarItemRequest request) {
+
+        ItemDTO itemOriginal = itemClient.obtenerItemPorId(request.itemId());
+
+        Optional<Carrito> carritoExistente = repository.findByUsuarioId(request.usuarioId());
+        Carrito carrito;
+
+        if (carritoExistente.isPresent()) {
+            carrito = carritoExistente.get();
+        } else {
+            carrito = new Carrito();
+            carrito.setUsuarioId(request.usuarioId());
         }
-        carrito.setPassword(encoder.encode(carrito.getPassword()));
-        carrito guardado = repository.save(carrito);
-        RolDTO rol = rolClient.buscarPorId(guardado.getRolId());
-        return ResponseEntity.status(HttpStatus.CREATED).body(UsuarioResponse.de(guardado, rol));
-    }
 
+        CarritoItem nuevoItem = new CarritoItem();
+        nuevoItem.setItemId(itemOriginal.id());
+
+        nuevoItem.setItemPrecio(itemOriginal.precio());
+
+        nuevoItem.setCarrito(carrito);
+        carrito.getItems().add(nuevoItem);
+
+        Carrito carritoGuardado = repository.save(carrito);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(carritoGuardado);
+    }
     @GetMapping
-    public List<carrito> listar(){
+    public List<Carrito> listarCarritos(){
         return repository.findAll();
     }
 
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> eliminar(@PathVariable Long id){
-        if(!repository.existsById(id)){
+    @DeleteMapping("/{usuarioId}")
+    public ResponseEntity<Void> eliminar(@PathVariable Long usuarioId){
+        if(!repository.existsByUsuarioId(usuarioId)){
             return ResponseEntity.notFound().build();
         }
-        repository.deleteById(id);
+        repository.deleteByUsuarioId(usuarioId);
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<UsuarioResponse> buscarPorId(@PathVariable Long id){
-        return repository.findById(id)
-                .map(carrito -> ResponseEntity.ok(UsuarioResponse.de(carrito, rolClient.buscarPorId(carrito.getRolId()))))
+    @GetMapping("/{usuarioId}")
+    public ResponseEntity<Carrito> verCarrito(@PathVariable Long usuarioId) {
+        return repository.findByUsuarioId(usuarioId)
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
 
 
-
 }
 
-==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\dto\CarritoResponse.java ====
+==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\dto\AgregarItemRequest.java ====
 
 package com.polec.mscarrito.dto;
 
-import com.polec.mscarrito.client.RolDTO;
-import com.polec.mscarrito.entity.carrito;
-
-public record CarritoResponse(
-        Long id,
-        String nombre,
-        String correo,
-        Long rolId,
-        String rol
+public record AgregarItemRequest(
+        Long usuarioId,
+        Long itemId,
+        Long itemPrecio
 ) {
-    public static CarritoResponse de(Carrito c, carrito u){
-        return new CarritoResponse(
-                u.getId(),
-                u.getNombre(),
-                u.getCorreo(),
-                u.getRolId(),
-                rol != null? rol.nombre() : "SIN ROL"
-        );
-    }
 }
 
 ==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\entity\Carrito.java ====
@@ -177,38 +160,80 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "carritos")
 @NoArgsConstructor
 @Getter
 @Setter
     public class Carrito {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+
+    @Column(nullable = false) private Long usuarioId;
+
+    private Long total = 0L;
+
+    @OneToMany(mappedBy = "carrito", cascade = CascadeType.ALL, orphanRemoval = true) private List<CarritoItem> items = new ArrayList<>();
+}
+
+==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\entity\CarritoItem.java ====
+
+package com.polec.mscarrito.entity;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Entity
+@Table(name = "carrito_items")
+@NoArgsConstructor
+@Getter
+@Setter
+
+public class CarritoItem {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    private Long usuarioId;
+    @Column(name = "item_id", nullable = false)
     private Long itemId;
+    @Column(name = "precio", nullable = false)
+    private Long itemPrecio;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "carrito_id")
+    @JsonIgnore
+    private Carrito carrito;
 }
 
-==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\repository\UserRepository.java ====
+==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\repository\CarritoRepository.java ====
 
 package com.polec.mscarrito.repository;
 
-import com.polec.mscarrito.entity.carrito;
+import com.polec.mscarrito.entity.Carrito;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface carritoRepository extends JpaRepository<carrito, Long> {
+import java.util.Optional;
+
+public interface CarritoRepository extends JpaRepository<Carrito, Long> {
+    Optional<Carrito> findByUsuarioId(Long UsuarioId);
+    Optional<Carrito> deleteByUsuarioId(Long UsuarioId);
+    Boolean existsByUsuarioId(Long UsuarioId);
+
 }
 
-==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\MsUserApplication.java ====
+==== C:\Users\jaflo\marketplace\ms-carrito\src\main\java\com\polec\mscarrito\MsCarritoApplication.java ====
 
 package com.polec.mscarrito;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 
+@EnableFeignClients
 @SpringBootApplication
 public class MsCarritoApplication {
 
@@ -221,9 +246,9 @@ public class MsCarritoApplication {
 ==== C:\Users\jaflo\marketplace\ms-carrito\src\main\resources\application.properties ====
 
 spring.application.name=ms-carrito
-server.port = 8081
-spring.datasource.url=jdbc:mysql://localhost:3307/polec?createDatabase
-spring.datasource.carritoname = polec
+server.port = 8084
+spring.datasource.url=jdbc:mysql://localhost:3307/carrito?createDatabaseIfNotExist=true
+spring.datasource.username = polec
 spring.datasource.password = polec
 
 spring.jpa.hibernate.ddl-auto = update
@@ -232,7 +257,7 @@ spring.jpa.show-sql=true
 spring.sql.init.mode=always
 spring.jpa.defer-datasource-initialization=true
 
-ms.role.url=http://localhost:8082
+ms.carrito.url=http://localhost:8084
 
 ==== C:\Users\jaflo\marketplace\ms-carrito\pom.xml ====
 
@@ -241,32 +266,20 @@ ms.role.url=http://localhost:8082
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.1</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <groupId>com.polec</groupId>
+        <artifactId>marketplace</artifactId>
+        <version>1.0-SNAPSHOT</version>
     </parent>
-    <groupId>com.polec</groupId>
+
     <artifactId>ms-carrito</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>ms-carrito</name>
-    <description>ms-carrito</description>
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
+    <description>Microservicio de carrito de compras del marketplace</description>
+
     <properties>
         <java.version>17</java.version>
     </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -274,11 +287,15 @@ ms.role.url=http://localhost:8082
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
+            <artifactId>spring-boot-starter-web</artifactId> <!-- CORREGIDO -->
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
@@ -292,12 +309,7 @@ ms.role.url=http://localhost:8082
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <artifactId>spring-boot-starter-test</artifactId> <!-- CORREGIDO -->
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -308,45 +320,8 @@ ms.role.url=http://localhost:8082
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>default-compile</id>
-                        <phase>compile</phase>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>default-testCompile</id>
-                        <phase>test-compile</phase>
-                        <goals>
-                            <goal>testCompile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
         </plugins>
     </build>
-
 </project>
 
 ==== C:\Users\jaflo\marketplace\ms-categoria\.mvn\wrapper\maven-wrapper.properties ====
@@ -455,9 +430,9 @@ public class MsCategoriaApplication {
 
 spring.application.name=ms-categoria
 
-server.port = 8082
+server.port = 8085
 
-spring.datasource.url=jdbc:mysql://localhost:3307/polec?createDatabase
+spring.datasource.url=jdbc:mysql://localhost:3307/categoria?createDatabaseIfNotExist=true
 spring.datasource.username = polec
 spring.datasource.password = polec
 
@@ -467,6 +442,8 @@ spring.jpa.show-sql=true
 spring.sql.init.mode=always
 spring.jpa.defer-datasource-initialization=true
 
+ms.categoria.url=http://localhost:8085
+
 ==== C:\Users\jaflo\marketplace\ms-categoria\pom.xml ====
 
 <?xml version="1.0" encoding="UTF-8"?>
@@ -474,32 +451,20 @@ spring.jpa.defer-datasource-initialization=true
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.1</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <groupId>com.polec</groupId>
+        <artifactId>marketplace</artifactId>
+        <version>1.0-SNAPSHOT</version>
     </parent>
-    <groupId>com.polec</groupId>
+
     <artifactId>ms-categoria</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ms-categoriae</name>
-    <description>ms-categoriae</description>
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
+    <name>ms-categoria</name>
+    <description>Microservicio de categorias de productos del marketplace</description>
+
     <properties>
         <java.version>17</java.version>
     </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -507,9 +472,8 @@ spring.jpa.defer-datasource-initialization=true
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
+            <artifactId>spring-boot-starter-web</artifactId> <!-- CORREGIDO -->
         </dependency>
-
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
@@ -522,12 +486,7 @@ spring.jpa.defer-datasource-initialization=true
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <artifactId>spring-boot-starter-test</artifactId> <!-- CORREGIDO -->
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -538,45 +497,8 @@ spring.jpa.defer-datasource-initialization=true
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>default-compile</id>
-                        <phase>compile</phase>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>default-testCompile</id>
-                        <phase>test-compile</phase>
-                        <goals>
-                            <goal>testCompile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
         </plugins>
     </build>
-
 </project>
 
 ==== C:\Users\jaflo\marketplace\ms-item\.mvn\wrapper\maven-wrapper.properties ====
@@ -589,36 +511,20 @@ distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-mav
 
 package com.polec.msitem.client;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
-@Component
-public class CategoriaClient {
-    private final RestClient rest;
+@FeignClient(name = "ms-categoria", url = "http://localhost:8085")
+public interface CategoriaClient {
 
-    public CategoriaClient(@Value("http://localhost:8083") String urlMsCategoria){
-        this.rest = RestClient.create(urlMsCategoria);
-    }
+    @GetMapping("/categorias/{id}")
+    CategoriaDTO buscarPorId(@PathVariable("id") Long id);
 
-    public CategoriaDTO buscarPorId(Long id){
-        if(id == null){
-            return null;
-        }
-        try{
-            return rest.get()
-                    .uri("/categorias/{id}", id)
-                    .retrieve()
-                    .body(CategoriaDTO.class);
-        } catch (Exception e) {
-            System.out.println("No se pudo obtener la categoria " + id + " : " + e.getMessage());
-            return null;
-        }
-    }
 
-    public boolean existe(Long id){
+    default boolean existe(Long id){
         return buscarPorId(id) != null;
-    }
+}
 }
 
 ==== C:\Users\jaflo\marketplace\ms-item\src\main\java\com\polec\msitem\client\CategoriaDTO.java ====
@@ -761,15 +667,12 @@ import lombok.Setter;
 @Getter
 @Setter
 public class Item {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    private String nombre;
-    private Long anio;     //no menor a 1800
-    private Long precio;     //no menor a 0
-    private Long vendedorId;
-    private Long categoriaId;
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+    @Column (nullable = false) private String nombre;
+    @Min(1800) private Long anio;     //no menor a 1800
+    @Min(0)private Long precio;     //no menor a 0
+    @Column (nullable = false) private Long vendedorId;
+    @Column (nullable = false) private Long categoriaId;
 
 }
 
@@ -789,23 +692,25 @@ package com.polec.msitem;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 
+@EnableFeignClients
 @SpringBootApplication
-public class MsitemApplication {
+public class MsItemApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(MsitemApplication.class, args);
+        SpringApplication.run(MsItemApplication.class, args);
     }
 
 }
 
 ==== C:\Users\jaflo\marketplace\ms-item\src\main\resources\application.properties ====
 
-spring.application.name=ms-carrito
+spring.application.name=ms-item
 server.port = 8083
 
-spring.datasource.url=jdbc:mysql://localhost:3307/polec?createDatabase
-spring.datasource.itemname = polec
+spring.datasource.url=jdbc:mysql://localhost:3307/item?createDatabaseIfNotExist=true
+spring.datasource.username = polec
 spring.datasource.password = polec
 
 
@@ -817,7 +722,7 @@ spring.sql.init.mode=always
 spring.jpa.defer-datasource-initialization=true
 
 
-ms.role.url=http://localhost:8083
+ms.item.url=http://localhost:8083
 
 ==== C:\Users\jaflo\marketplace\ms-item\pom.xml ====
 
@@ -826,32 +731,20 @@ ms.role.url=http://localhost:8083
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.1</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <groupId>com.polec</groupId>
+        <artifactId>marketplace</artifactId>
+        <version>1.0-SNAPSHOT</version>
     </parent>
-    <groupId>com.polec</groupId>
+
     <artifactId>ms-item</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>ms-item</name>
-    <description>ms-item</description>
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
+    <description>Microservicio de catálogo de items del marketplace</description>
+
     <properties>
         <java.version>17</java.version>
     </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -859,11 +752,19 @@ ms.role.url=http://localhost:8083
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
+            <artifactId>spring-boot-starter-web</artifactId> <!-- CORREGIDO -->
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
@@ -877,12 +778,7 @@ ms.role.url=http://localhost:8083
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <artifactId>spring-boot-starter-test</artifactId> <!-- CORREGIDO -->
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -893,45 +789,8 @@ ms.role.url=http://localhost:8083
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>default-compile</id>
-                        <phase>compile</phase>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>default-testCompile</id>
-                        <phase>test-compile</phase>
-                        <goals>
-                            <goal>testCompile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
         </plugins>
     </build>
-
 </project>
 
 ==== C:\Users\jaflo\marketplace\ms-rol\.mvn\wrapper\maven-wrapper.properties ====
@@ -945,7 +804,7 @@ distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-mav
 package com.polec.msrol.controller;
 
 import com.polec.msrol.entity.Rol;
-import com.polec.msrole.repository.RolRepository;
+import com.polec.msrol.repository.RolRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -1042,7 +901,7 @@ spring.application.name=ms-rol
 
 server.port = 8082
 
-spring.datasource.url=jdbc:mysql://localhost:3307/polec?createDatabase
+spring.datasource.url=jdbc:mysql://localhost:3307/rol?createDatabaseIfNotExist=true
 spring.datasource.username = polec
 spring.datasource.password = polec
 
@@ -1052,6 +911,8 @@ spring.jpa.show-sql=true
 spring.sql.init.mode=always
 spring.jpa.defer-datasource-initialization=true
 
+ms.rol.url=http://localhost:8082
+
 ==== C:\Users\jaflo\marketplace\ms-rol\pom.xml ====
 
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1059,32 +920,20 @@ spring.jpa.defer-datasource-initialization=true
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.1</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <groupId>com.polec</groupId>
+        <artifactId>marketplace</artifactId>
+        <version>1.0-SNAPSHOT</version>
     </parent>
-    <groupId>com.polec</groupId>
+
     <artifactId>ms-rol</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ms-role</name>
-    <description>ms-role</description>
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
+    <name>ms-rol</name>
+    <description>Microservicio de gestión de roles del marketplace</description>
+
     <properties>
         <java.version>17</java.version>
     </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -1092,9 +941,8 @@ spring.jpa.defer-datasource-initialization=true
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
+            <artifactId>spring-boot-starter-web</artifactId> <!-- CORREGIDO -->
         </dependency>
-
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
@@ -1107,12 +955,7 @@ spring.jpa.defer-datasource-initialization=true
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <artifactId>spring-boot-starter-test</artifactId> <!-- CORREGIDO -->
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -1123,45 +966,8 @@ spring.jpa.defer-datasource-initialization=true
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>default-compile</id>
-                        <phase>compile</phase>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>default-testCompile</id>
-                        <phase>test-compile</phase>
-                        <goals>
-                            <goal>testCompile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
         </plugins>
     </build>
-
 </project>
 
 ==== C:\Users\jaflo\marketplace\ms-usuario\.mvn\wrapper\maven-wrapper.properties ====
@@ -1174,35 +980,23 @@ distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-mav
 
 package com.polec.msusuario.client;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
-@Component
-public class RolClient {
-    private final RestClient rest;
+@FeignClient(name = "ms-rol", url = "http://localhost:8082")
+public interface RolClient {
 
-    public RolClient(@Value("http://localhost:8082") String urlMsRol){
-        this.rest = RestClient.create(urlMsRol);
-    }
+    @GetMapping("/roles/{id}")
+    RolDTO buscarPorId(@PathVariable("id") Long id);
 
-    public RolDTO buscarPorId(Long id){
-        if(id == null){
-            return null;
-        }
-        try{
-            return rest.get()
-                    .uri("/roles/{id}", id)
-                    .retrieve()
-                    .body(RolDTO.class);
+    default boolean existe(Long id) {
+        if (id == null) return false;
+        try {
+            return buscarPorId(id) != null;
         } catch (Exception e) {
-            System.out.println("No se pudo obtener el rol " + id + " : " + e.getMessage());
-            return null;
+            return false;
         }
-    }
-
-    public boolean existe(Long id){
-        return buscarPorId(id) != null;
     }
 }
 
@@ -1348,15 +1142,11 @@ import lombok.Setter;
 @Getter
 @Setter
 public class Usuario {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    private String nombre;
-    @Column(unique = true)
-    private String correo;
-    private String password;
-    private Long rolId;
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+    @Column(nullable = false) private String nombre;
+    @Column(unique = true, nullable = false) private String correo;
+    @Column(nullable = false) private String password;
+    @Column(nullable = false) private Long rolId;
 
 }
 
@@ -1364,9 +1154,10 @@ public class Usuario {
 
 package com.polec.msusuario.repository;
 
+import com.polec.msusuario.entity.Usuario;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface UsuarioRepository extends JpaRepository {
+public interface UsuarioRepository extends JpaRepository <Usuario, Long> {
 }
 
 ==== C:\Users\jaflo\marketplace\ms-usuario\src\main\java\com\polec\msusuario\MsUsuarioApplication.java ====
@@ -1375,7 +1166,9 @@ package com.polec.msusuario;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 
+@EnableFeignClients
 @SpringBootApplication
 public class MsUsuarioApplication {
 
@@ -1390,8 +1183,8 @@ public class MsUsuarioApplication {
 spring.application.name=ms-usuario
 server.port = 8081
 #configuraciones de mi bbdd
-spring.datasource.url=jdbc:mysql://localhost:3307/polec?createDatabase
-spring.datasource.usuarioname = polec
+spring.datasource.url=jdbc:mysql://localhost:3307/usuario?createDatabaseIfNotExist=true
+spring.datasource.username = polec
 spring.datasource.password = polec
 
 #como quiero que se comporte mi bbdd cuando incie spring
@@ -1412,32 +1205,20 @@ ms.role.url=http://localhost:8082
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.1</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <groupId>com.polec</groupId>
+        <artifactId>marketplace</artifactId>
+        <version>1.0-SNAPSHOT</version>
     </parent>
-    <groupId>com.polec</groupId>
+
     <artifactId>ms-usuario</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>ms-usuario</name>
-    <description>ms-usuario</description>
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
+    <description>Microservicio de usuarios del marketplace</description>
+
     <properties>
         <java.version>17</java.version>
     </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -1445,11 +1226,15 @@ ms.role.url=http://localhost:8082
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc</artifactId>
+            <artifactId>spring-boot-starter-web</artifactId> <!-- CORREGIDO -->
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
@@ -1463,12 +1248,7 @@ ms.role.url=http://localhost:8082
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <artifactId>spring-boot-starter-test</artifactId> <!-- CORREGIDO -->
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -1479,45 +1259,8 @@ ms.role.url=http://localhost:8082
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>default-compile</id>
-                        <phase>compile</phase>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>default-testCompile</id>
-                        <phase>test-compile</phase>
-                        <goals>
-                            <goal>testCompile</goal>
-                        </goals>
-                        <configuration>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>org.projectlombok</groupId>
-                                    <artifactId>lombok</artifactId>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
         </plugins>
     </build>
-
 </project>
 
 ==== C:\Users\jaflo\marketplace\docker-compose.yml ====
@@ -1550,10 +1293,26 @@ volumes:
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.1</version>
+        <relativePath/>
+    </parent>
+
     <groupId>com.polec</groupId>
-    <artifactId>tienda</artifactId>
+    <artifactId>marketplace</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
+
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <spring-cloud.version>2023.0.0</spring-cloud.version>
+        <lombok.version>1.18.30</lombok.version>
+    </properties>
+
     <modules>
         <module>ms-rol</module>
         <module>ms-usuario</module>
@@ -1562,4 +1321,57 @@ volumes:
         <module>ms-carrito</module>
     </modules>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-validation</artifactId>
+            </dependency>
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

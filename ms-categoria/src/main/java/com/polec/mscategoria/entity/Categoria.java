@@ -11,12 +11,8 @@ import lombok.Setter;
 @Getter
 @Setter
 public class Categoria {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    @Column(nullable = false, unique = true, length = 40)
-    private String nombre;
-    @Column(length = 150)
-    private String descripcion;
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+    @Column(nullable = false, unique = true, length = 40) private String nombre;
+    @Column(length = 150) private String descripcion;
 
 }
