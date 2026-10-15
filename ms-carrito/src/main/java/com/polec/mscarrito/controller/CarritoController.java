@@ -6,13 +6,13 @@ import com.polec.mscarrito.dto.AgregarItemRequest;
 import com.polec.mscarrito.entity.Carrito;
 import com.polec.mscarrito.entity.CarritoItem;
 import com.polec.mscarrito.repository.CarritoRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import feign.FeignException;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/carritos")
@@ -26,31 +26,48 @@ public class CarritoController {
     }
 
     @PostMapping("/items")
-    public ResponseEntity<Carrito> agregarItem(@RequestBody AgregarItemRequest request) {
+    public ResponseEntity<?> agregarItem(@Valid @RequestBody AgregarItemRequest request) {
 
-        ItemDTO itemOriginal = itemClient.obtenerItemPorId(request.itemId());
+        ItemDTO item;
+        try {
+            item = itemClient.obtenerItemPorId(request.itemId());
+        } catch (FeignException.NotFound e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("El item " + request.itemId() + " no existe");
+        }
 
-        Optional<Carrito> carritoExistente = repository.findByUsuarioId(request.usuarioId());
-        Carrito carrito;
+        if (item.vendedorId().equals(request.usuarioId())) {
+            return ResponseEntity.badRequest()
+                    .body("No puedes agregar tu propio producto al carrito");
+        }
 
-        if (carritoExistente.isPresent()) {
-            carrito = carritoExistente.get();
-        } else {
-            carrito = new Carrito();
-            carrito.setUsuarioId(request.usuarioId());
+        Carrito carrito = repository.findByUsuarioId(request.usuarioId())
+                .orElseGet(() -> {
+                    Carrito nuevo = new Carrito();
+                    nuevo.setUsuarioId(request.usuarioId());
+                    return nuevo;
+                });
+
+        boolean yaEnElCarrito = carrito.getItems().stream()
+                .anyMatch(i -> i.getItemId().equals(request.itemId()));
+        if (yaEnElCarrito) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body("El item ya está en el carrito");
         }
 
         CarritoItem nuevoItem = new CarritoItem();
-        nuevoItem.setItemId(itemOriginal.id());
-
-        nuevoItem.setItemPrecio(itemOriginal.precio());
-
+        nuevoItem.setItemId(item.id());
+        nuevoItem.setItemNombre(item.nombre());
+        nuevoItem.setItemPrecio(item.precio());
         nuevoItem.setCarrito(carrito);
         carrito.getItems().add(nuevoItem);
 
-        Carrito carritoGuardado = repository.save(carrito);
+        // calcular el total que vale el carrito sumando el precio de cada item
+        carrito.setTotal(carrito.getItems().stream()
+                .mapToLong(CarritoItem::getItemPrecio)
+                .sum());
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(carritoGuardado);
+        return ResponseEntity.status(HttpStatus.CREATED).body(repository.save(carrito));
     }
     @GetMapping
     public List<Carrito> listarCarritos(){
@@ -58,12 +75,22 @@ public class CarritoController {
     }
 
 
-    @DeleteMapping("/{usuarioId}")
-    public ResponseEntity<Void> eliminar(@PathVariable Long usuarioId){
-        if(!repository.existsByUsuarioId(usuarioId)){
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> eliminarPorId(@PathVariable Long id) {
+        if (!repository.existsById(id)) {
             return ResponseEntity.notFound().build();
         }
-        repository.deleteByUsuarioId(usuarioId);
+        repository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/usuario/{usuarioId}")
+    public ResponseEntity<Void> eliminarPorUsuario(@PathVariable Long usuarioId) {
+        Carrito carrito = repository.findByUsuarioId(usuarioId).orElse(null);
+        if (carrito == null) {
+            return ResponseEntity.notFound().build();
+        }
+        repository.delete(carrito);
         return ResponseEntity.noContent().build();
     }
 

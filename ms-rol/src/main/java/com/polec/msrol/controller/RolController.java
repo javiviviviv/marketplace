@@ -28,6 +28,16 @@ public class RolController {
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
+    @PutMapping("/{id}")
+    public ResponseEntity<Rol> actualizar(@PathVariable Long id, @RequestBody Rol datos){
+        Rol rol = repository.findById(id).orElse(null);
+        if (rol == null) {
+            return ResponseEntity.notFound().build();
+        }
+        rol.setNombre(datos.getNombre());
+        rol.setDescripcion(datos.getDescripcion());
+        return ResponseEntity.ok(repository.save(rol));
+    }
 
     @PostMapping
     public Rol crear(@RequestBody Rol rol){

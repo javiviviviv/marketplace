@@ -2,9 +2,12 @@ package com.polec.msusuario.controller;
 
 import com.polec.msusuario.client.RolClient;
 import com.polec.msusuario.client.RolDTO;
+import com.polec.msusuario.dto.CambiarPasswordRequest;
+import com.polec.msusuario.dto.UsuarioRequest;
 import com.polec.msusuario.dto.UsuarioResponse;
 import com.polec.msusuario.entity.Usuario;
 import com.polec.msusuario.repository.UsuarioRepository;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -42,6 +45,37 @@ public class UsuarioController {
     @GetMapping
     public List<Usuario> listar(){
         return repository.findAll();
+    }
+
+    // actualizar el usuario (datos fuera de la password)
+    @PutMapping("/{id}")
+    public ResponseEntity<?> actualizar(@PathVariable Long id, @Valid @RequestBody UsuarioRequest datos){
+        Usuario usuario = repository.findById(id).orElse(null);
+        if (usuario == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!rolClient.existe(datos.rolId())) {
+            return ResponseEntity.badRequest()
+                    .body("El rol " + datos.rolId() + " no existe");
+        }
+        usuario.setNombre(datos.nombre());
+        usuario.setCorreo(datos.correo());
+        usuario.setRolId(datos.rolId());
+
+        Usuario guardado = repository.save(usuario);
+        return ResponseEntity.ok(UsuarioResponse.de(guardado, rolClient.buscarPorId(guardado.getRolId())));
+    }
+    // password se debe volver a hashear
+    @PutMapping("/{id}/password")
+    public ResponseEntity<Void> cambiarPassword(@PathVariable Long id,
+                                                @Valid @RequestBody CambiarPasswordRequest passwordNueva){
+        Usuario usuario = repository.findById(id).orElse(null);
+        if (usuario == null) {
+            return ResponseEntity.notFound().build();
+        }
+        usuario.setPassword(encoder.encode(passwordNueva.password()));
+        repository.save(usuario);
+        return ResponseEntity.noContent().build();
     }
 
 

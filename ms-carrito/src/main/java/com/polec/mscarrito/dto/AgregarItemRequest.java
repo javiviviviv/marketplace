@@ -1,8 +1,9 @@
 package com.polec.mscarrito.dto;
 
+import org.antlr.v4.runtime.misc.NotNull;
+
 public record AgregarItemRequest(
-        Long usuarioId,
-        Long itemId,
-        Long itemPrecio
+        @NotNull Long usuarioId,
+        @NotNull Long itemId
 ) {
 }

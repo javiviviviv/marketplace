@@ -1,3 +1,5 @@
+powershell -Command "Get-CimInstance Win32_Process -Filter \"Name='java.exe'\" | Where-Object { $_.CommandLine -like '*ms-*.jar*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+
 @echo off
 title Lanzador General de Microservicios Marketplace
 echo =======================================================
@@ -18,8 +20,8 @@ echo =======================================================
 docker compose up -d mysql
 
 echo.
-echo Esperando 20 segundos a que el motor de MySQL este 100%% operativo...
-timeout /t 20 /nobreak > nul
+echo Esperando 5 segundos a que el motor de MySQL este 100%% operativo...
+timeout /t 5 /nobreak > nul
 
 echo.
 echo =======================================================

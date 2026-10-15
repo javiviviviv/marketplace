@@ -13,13 +13,10 @@ import lombok.Setter;
 @Setter
 
 public class CarritoItem {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    @Column(name = "item_id", nullable = false)
-    private Long itemId;
-    @Column(name = "precio", nullable = false)
-    private Long itemPrecio;
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+    @Column(name = "item_id", nullable = false) private Long itemId;
+    @Column(name = "nombre", nullable = false) private String itemNombre;
+    @Column(name = "precio", nullable = false) private Long itemPrecio;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "carrito_id")
