@@ -5,7 +5,9 @@ docker compose up -d
 ```
 2. ejecutar para levantar los microservicios y sus bases de datos
 
-``` iniciar-todo.bat ```
+``` 
+iniciar-todo.bat
+ ```
 
 3. url peticiones http:
 ``` 
