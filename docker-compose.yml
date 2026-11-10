@@ -71,9 +71,84 @@ services:
     volumes:
       - mysql_carrito_data:/var/lib/mysql
 
+  mysql-chat:
+    image: mysql:8.4
+    container_name: mysql-chat
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: chat
+      MYSQL_USER: chat_user
+      MYSQL_PASSWORD: chat_pass
+    ports:
+      - "3312:3306"
+    volumes:
+      - mysql_chat_data:/var/lib/mysql
+
+  mysql-venta:
+    image: mysql:8.4
+    container_name: mysql-venta
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: venta
+      MYSQL_USER: venta_user
+      MYSQL_PASSWORD: venta_pass
+    ports:
+      - "3313:3306"
+    volumes:
+      - mysql_venta_data:/var/lib/mysql
+
+  mysql-valoracion:
+    image: mysql:8.4
+    container_name: mysql-valoracion
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: valoracion
+      MYSQL_USER: valoracion_user
+      MYSQL_PASSWORD: valoracion_pass
+    ports:
+      - "3314:3306"
+    volumes:
+      - mysql_valoracion_data:/var/lib/mysql
+
+  mysql-pago:
+    image: mysql:8.4
+    container_name: mysql-pago
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: pago
+      MYSQL_USER: pago_user
+      MYSQL_PASSWORD: pago_pass
+    ports:
+      - "3315:3306"
+    volumes:
+      - mysql_pago_data:/var/lib/mysql
+
+  mysql-envio:
+    image: mysql:8.4
+    container_name: mysql-envio
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: envio
+      MYSQL_USER: envio_user
+      MYSQL_PASSWORD: envio_pass
+    ports:
+      - "3316:3306"
+    volumes:
+      - mysql_envio_data:/var/lib/mysql
+
 volumes:
   mysql_rol_data:
   mysql_usuario_data:
   mysql_item_data:
   mysql_categoria_data:
   mysql_carrito_data:
+  mysql_chat_data:
+  mysql_venta_data:
+  mysql_valoracion_data:
+  mysql_pago_data:
+  mysql_envio_data:
