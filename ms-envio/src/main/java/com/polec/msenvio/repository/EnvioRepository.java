@@ -13,6 +13,8 @@ public interface EnvioRepository extends JpaRepository<Envio, Long> {
 
     Optional<Envio> findByVentaId(Long ventaId);
 
+    Optional<Envio> findByNumeroPedido(String numeroPedido);
+
     List<Envio> findByRepartidorIdOrderByPosicionAsc(Long repartidorId);
 
     List<Envio> findByRepartidorIdAndEstadoOrderByPosicionAsc(Long repartidorId, EstadoEnvio estado);

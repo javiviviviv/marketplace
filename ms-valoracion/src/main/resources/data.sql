@@ -1,6 +1,3 @@
--- Valoraciones de ejemplo de items vendidos.
--- Idempotente: (item_id, usuario_id) es unico, por lo que no se repiten.
-
 INSERT INTO valoraciones (item_id, usuario_id, vendedor_id, puntuacion, comentario, fecha_creacion)
 SELECT 1, 1, 2, 5, 'Excelente estado y entrega rapida.', NOW(6) FROM DUAL
 WHERE NOT EXISTS (

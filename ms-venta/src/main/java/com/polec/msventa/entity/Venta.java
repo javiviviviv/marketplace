@@ -24,7 +24,6 @@ public class Venta {
     @Column(name = "vendedor_id", nullable = false)
     private Long vendedorId;
 
-    // se completa cuando el item se marca como VENDIDO
     @Column(name = "comprador_id")
     private Long compradorId;
 

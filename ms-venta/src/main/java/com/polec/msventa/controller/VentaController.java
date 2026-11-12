@@ -41,7 +41,6 @@ public class VentaController {
         this.usuarioClient = usuarioClient;
     }
 
-    // Registra el estado inicial de un item. Si ya existe, devuelve el estado actual.
     @PostMapping
     @Operation(summary = "Registrar venta", description = "Registra el estado inicial de un item. Si ya existe una venta para el item, devuelve la existente.")
     @ApiResponses({

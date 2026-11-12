@@ -59,6 +59,7 @@ public class CarritoController {
                     .body("No puedes agregar tu propio producto al carrito");
         }
 
+        // si el item no tiene venta se crea en EN_VENTA y se devuelve su estado
         VentaDTO venta;
         try {
             venta = ventaClient.registrar(new RegistrarVentaRequest(item.id()));

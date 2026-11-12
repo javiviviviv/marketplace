@@ -21,7 +21,6 @@ public class OpenApiConfig {
                 .servers(List.of(new Server().url("/")));
     }
 
-    // Documenta respuestas comunes para todas las operaciones
     @Bean
     public OperationCustomizer respuestasComunes() {
         return (operation, handlerMethod) -> {

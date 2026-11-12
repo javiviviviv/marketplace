@@ -1,6 +1,3 @@
--- Items de base.
--- Son idempotentes: se insertan solo si no existe uno equivalente.
-
 INSERT INTO items (nombre, anio, precio, vendedor_id, categoria_id)
 SELECT 'Nintendo 3DS XL azul', 2013, 85000, 2, 1 FROM DUAL
 WHERE NOT EXISTS (

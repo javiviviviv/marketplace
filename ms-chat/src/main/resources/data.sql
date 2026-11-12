@@ -1,6 +1,3 @@
--- Conversaciones y mensajes de ejemplo.
--- Idempotente: una conversacion se inserta solo si no existe la misma combinacion.
-
 INSERT INTO conversaciones (usuario1_id, usuario2_id, item_id, fecha_creacion, ultima_actividad)
 SELECT 1, 2, 1, NOW(6), NOW(6) FROM DUAL
 WHERE NOT EXISTS (
@@ -18,8 +15,6 @@ SELECT 2, 3, 5, NOW(6), NOW(6) FROM DUAL
 WHERE NOT EXISTS (
     SELECT 1 FROM conversaciones WHERE usuario1_id = 2 AND usuario2_id = 3 AND item_id = 5
 );
-
--- Un mensaje de ejemplo por conversacion. El contenido no se edita.
 
 INSERT INTO mensajes (conversacion_id, emisor_id, contenido, fecha_envio, leido)
 SELECT c.id, 1, 'Hola, sigue disponible el item?', NOW(6), 1

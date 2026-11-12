@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 
 public record EnvioResponse(
         Long id,
+        String numeroPedido,
         Long ventaId,
         Long compradorId,
         Long repartidorId,
@@ -20,6 +21,7 @@ public record EnvioResponse(
     public static EnvioResponse de(Envio envio) {
         return new EnvioResponse(
                 envio.getId(),
+                envio.getNumeroPedido(),
                 envio.getVentaId(),
                 envio.getCompradorId(),
                 envio.getRepartidorId(),

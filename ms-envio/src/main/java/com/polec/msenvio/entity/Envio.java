@@ -18,6 +18,9 @@ public class Envio {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "numero_pedido", unique = true, length = 30)
+    private String numeroPedido;
+
     @Column(name = "venta_id", nullable = false)
     private Long ventaId;
 
@@ -34,7 +37,6 @@ public class Envio {
     @Column(nullable = false, length = 20)
     private EstadoEnvio estado = EstadoEnvio.EN_PREPARACION;
 
-    // orden de entrega dentro de la ruta de un repartidor
     @Column(name = "posicion", nullable = false)
     private Integer posicion;
 

@@ -14,7 +14,6 @@ public class GatewayRoutesConfig {
     public RouteLocator marketplaceRoutes(RouteLocatorBuilder builder) {
         RouteLocatorBuilder.Builder routes = builder.routes();
 
-        // Rutas de negocio
         routes.route("ms-usuario", r -> r.path("/usuarios/**")
                 .uri("http://localhost:8081"));
         routes.route("ms-rol", r -> r.path("/roles/**")
@@ -36,7 +35,7 @@ public class GatewayRoutesConfig {
         routes.route("ms-envio", r -> r.path("/envios/**")
                 .uri("http://localhost:8090"));
 
-        // Documentacion OpenAPI de cada servicio para el Swagger UI centralizado
+        // se reescribe la ruta para que cada ms entregue su propio openapi
         routes.route("docs-ms-usuario", r -> r.path(DOCS + "ms-usuario")
                 .filters(f -> f.rewritePath(DOCS + "ms-usuario", "/v3/api-docs"))
                 .uri("http://localhost:8081"));

@@ -39,7 +39,6 @@ public class EnvioController {
         this.usuarioClient = usuarioClient;
     }
 
-    // Crea un pedido de envio para una venta y lo agrega al final de la ruta del repartidor.
     @PostMapping
     @Operation(summary = "Crear envio", description = "Crea un envio en EN_PREPARACION y lo agrega al final de la ruta del repartidor. Valida que la venta no tenga envio y que el repartidor exista y tenga rol REPARTIDOR.")
     @ApiResponses({
@@ -65,6 +64,8 @@ public class EnvioController {
         }
 
         Envio envio = new Envio();
+        // el numero de pedido se arma con el id de la venta
+        envio.setNumeroPedido(generarNumeroPedido(request.ventaId()));
         envio.setVentaId(request.ventaId());
         envio.setCompradorId(request.compradorId());
         envio.setRepartidorId(request.repartidorId());
@@ -88,13 +89,25 @@ public class EnvioController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Obtener envio por id", description = "Busca un envio por su identificador.")
+    @Operation(summary = "Obtener envio por id de envio", description = "Busca un envio por el id del propio envio (no por el id del repartidor).")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Envio encontrado"),
             @ApiResponse(responseCode = "404", description = "No existe un envio con el id indicado")
     })
     public ResponseEntity<EnvioResponse> buscarPorId(@PathVariable Long id) {
         return repository.findById(id)
+                .map(envio -> ResponseEntity.ok(EnvioResponse.de(envio)))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/pedido/{numeroPedido}")
+    @Operation(summary = "Obtener envio por numero de pedido", description = "Busca un envio por su numero de pedido legible, por ejemplo PED-000001.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Envio encontrado"),
+            @ApiResponse(responseCode = "404", description = "No existe un envio con el numero de pedido indicado")
+    })
+    public ResponseEntity<EnvioResponse> buscarPorNumeroPedido(@PathVariable String numeroPedido) {
+        return repository.findByNumeroPedido(numeroPedido)
                 .map(envio -> ResponseEntity.ok(EnvioResponse.de(envio)))
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -169,7 +182,6 @@ public class EnvioController {
                 .orElse(ResponseEntity.noContent().build());
     }
 
-    // Panel del repartidor: pedidos, entregados, pendientes, siguiente y conteos.
     @GetMapping("/repartidor/{repartidorId}/resumen")
     @Operation(summary = "Resumen del repartidor", description = "Devuelve el panel del repartidor con pedidos, entregados, pendientes, siguiente envio y conteos totales.")
     @ApiResponses({
@@ -231,7 +243,6 @@ public class EnvioController {
         return aplicarEstado(envio, request.estado());
     }
 
-    // EN_PREPARACION -> EN_CAMINO
     @PutMapping("/{id}/iniciar")
     @Operation(summary = "Iniciar envio", description = "Pasa el envio de EN_PREPARACION a EN_CAMINO.")
     @ApiResponses({
@@ -252,7 +263,6 @@ public class EnvioController {
         return aplicarEstado(envio, EstadoEnvio.EN_CAMINO);
     }
 
-    // Avanza al siguiente estado permitido.
     @PutMapping("/{id}/avanzar")
     @Operation(summary = "Avanzar envio", description = "Avanza al siguiente estado permitido: EN_PREPARACION a EN_CAMINO, EN_CAMINO a LLEGANDO, LLEGANDO a ENTREGADO.")
     @ApiResponses({
@@ -282,7 +292,6 @@ public class EnvioController {
         return aplicarEstado(envio, siguiente);
     }
 
-    // Marca el envio como ENTREGADO y promueve el siguiente pedido a LLEGANDO.
     @PutMapping("/{id}/entregar")
     @Operation(summary = "Entregar envio", description = "Marca el envio como ENTREGADO y promueve automaticamente el siguiente pedido de la ruta a LLEGANDO. Deben entregarse primero los pedidos anteriores.")
     @ApiResponses({
@@ -300,6 +309,7 @@ public class EnvioController {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body("El envio " + id + " ya fue entregado");
         }
+        // no se puede entregar si quedan pedidos anteriores en la ruta
         if (!esSiguiente(envio)) {
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body("Aun hay pedidos anteriores pendientes. El siguiente pedido debe entregarse primero");
@@ -307,7 +317,6 @@ public class EnvioController {
         return aplicarEstado(envio, ENTREGADO);
     }
 
-    // Reasigna el pedido a otro repartidor y lo pone al final de su ruta.
     @PutMapping("/{id}/repartidor")
     @Operation(summary = "Reasignar repartidor", description = "Reasigna el envio a otro repartidor y lo coloca al final de su ruta. Si estaba en LLEGANDO pasa a EN_CAMINO.")
     @ApiResponses({
@@ -335,7 +344,6 @@ public class EnvioController {
 
         envio.setRepartidorId(request.repartidorId());
         envio.setPosicion(siguientePosicion(request.repartidorId()));
-        // si estaba marcado como LLEGANDO deja de ser el siguiente de la ruta anterior
         if (envio.getEstado() == EstadoEnvio.LLEGANDO) {
             envio.setEstado(EstadoEnvio.EN_CAMINO);
         }
@@ -412,8 +420,8 @@ public class EnvioController {
         return siguiente.isPresent() && siguiente.get().getId().equals(envio.getId());
     }
 
-    // El primer pedido pendiente de la ruta queda en LLEGANDO automaticamente.
     private void promoverSiguiente(Long repartidorId) {
+        // el primero pendiente de la ruta queda en LLEGANDO
         repository.findFirstByRepartidorIdAndEstadoNotOrderByPosicionAsc(repartidorId, ENTREGADO)
                 .ifPresent(siguiente -> {
                     if (siguiente.getEstado() != EstadoEnvio.LLEGANDO) {
@@ -427,6 +435,10 @@ public class EnvioController {
     private int siguientePosicion(Long repartidorId) {
         Integer ultima = repository.ultimaPosicion(repartidorId);
         return (ultima == null ? 0 : ultima) + 1;
+    }
+
+    private String generarNumeroPedido(Long ventaId) {
+        return String.format("PED-%06d", ventaId);
     }
 
     private ResponseEntity<?> validarRepartidor(Long repartidorId) {

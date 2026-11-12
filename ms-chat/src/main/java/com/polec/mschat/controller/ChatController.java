@@ -63,6 +63,7 @@ public class ChatController {
                 : conversacionRepository.buscarEntreUsuariosPorItem(
                         request.usuario1Id(), request.usuario2Id(), request.itemId());
 
+        // si ya hablaron de este item se reutiliza la conversacion
         if (!existentes.isEmpty()) {
             return ResponseEntity.ok(toResponse(existentes.get(0)));
         }
